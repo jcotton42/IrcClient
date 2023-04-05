@@ -137,4 +137,79 @@ public sealed class IrcMessage
 
         return parameters;
     }
+
+    public override string ToString()
+    {
+        StringBuilder message = new();
+        if (Tags.Any())
+        {
+            message.Append('@');
+            var count = 0;
+            foreach(var (key, value) in Tags)
+            {
+                message.Append(key);
+                if (value is not null)
+                {
+                    message.Append('=');
+                    AppendEscapedTagValue(message, value);
+                }
+
+                count++;
+                if (count < Tags.Count) message.Append(';');
+            }
+
+            message.Append(' ');
+        }
+
+        if (Source is not null)
+        {
+            message.Append(':');
+            message.Append(Source);
+            message.Append(' ');
+        }
+
+        message.Append(Command);
+
+        if (Parameters.Any())
+        {
+            foreach (var param in Parameters.SkipLast(1))
+            {
+                message.Append(' ');
+                message.Append(param);
+            }
+
+            message.Append(" :");
+            message.Append(Parameters[^1]);
+        }
+
+        return message.ToString();
+    }
+
+    private void AppendEscapedTagValue(StringBuilder message, string value)
+    {
+        foreach (var ch in value)
+        {
+            switch (ch)
+            {
+                case ';':
+                    message.Append("\\:");
+                    break;
+                case ' ':
+                    message.Append("\\s");
+                    break;
+                case '\\':
+                    message.Append("\\\\");
+                    break;
+                case '\r':
+                    message.Append("\\r");
+                    break;
+                case '\n':
+                    message.Append("\\n");
+                    break;
+                default:
+                    message.Append(ch);
+                    break;
+            }
+        }
+    }
 }

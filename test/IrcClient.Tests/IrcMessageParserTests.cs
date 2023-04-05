@@ -1,6 +1,5 @@
 using FluentAssertions;
 using FluentAssertions.Execution;
-
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
@@ -34,10 +33,25 @@ public sealed class IrcMessageParserTests
             message.Command.Should().Be(data.Atoms.Verb);
 
             if (data.Atoms.Params is null) message.Parameters.Should().BeEmpty();
-            else message.Parameters.Should().BeEquivalentTo(data.Atoms.Params);
+            else message.Parameters.Should().Equal(data.Atoms.Params);
 
             if (data.Atoms.Tags is null) message.Tags.Should().BeEmpty();
             else message.Tags.Should().Equal(data.Atoms.Tags);
         }
+    }
+
+    [MemberData(nameof(ToStringTestData))]
+    [Theory]
+    public void Test_ToString(ToStringTestData data)
+    {
+        var message = new IrcMessage
+        {
+            Tags = data.Atoms.Tags ?? new Dictionary<string, string?>(),
+            Source = data.Atoms.Source,
+            Command = data.Atoms.Verb,
+            Parameters = data.Atoms.Params ?? Array.Empty<string>(),
+        };
+
+        message.ToString().Should().BeOneOf(data.Matches);
     }
 }
