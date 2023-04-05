@@ -127,8 +127,11 @@ public sealed class IrcMessage
 
         for (; middleSpan.IndexOf(' ') is var nextSplit and not -1; middleSpan = middleSpan[(nextSplit + 1)..])
         {
-            parameters.Add(new string(middleSpan[..nextSplit]));
+            var toParse = middleSpan[..nextSplit];
+            if (toParse.IsEmpty) continue;
+            parameters.Add(new string(toParse));
         }
+        if (!middleSpan.IsEmpty) parameters.Add(new string(middleSpan));
 
         if (trailing is not null) parameters.Add(trailing);
 
