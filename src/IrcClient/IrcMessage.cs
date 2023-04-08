@@ -55,18 +55,20 @@ public sealed class IrcMessage
         string key;
         string? value;
         Dictionary<string, string?> tags = new();
+        StringBuilder valueBuilder = new();
         for (; span.IndexOf(';') is var nextSplit and not -1; span = span[(nextSplit + 1)..])
         {
-            (key, value) = ParseTag(span[..nextSplit]);
+            (key, value) = ParseTag(span[..nextSplit], valueBuilder);
             tags[key] = value;
+            valueBuilder.Clear();
         }
 
-        (key, value) = ParseTag(span);
+        (key, value) = ParseTag(span, valueBuilder);
         tags[key] = value;
         return tags;
     }
 
-    private static (string, string?) ParseTag(ReadOnlySpan<char> span)
+    private static (string, string?) ParseTag(ReadOnlySpan<char> span, StringBuilder value)
     {
         var equals = span.IndexOf('=');
         if (equals < 0) return (new string(span), null);
@@ -74,7 +76,6 @@ public sealed class IrcMessage
         if (valueSpan.IsEmpty) return (new string(span[..equals]), null);
 
         var escaped = false;
-        StringBuilder value = new();
         foreach (var ch in valueSpan)
         {
             if (escaped)
