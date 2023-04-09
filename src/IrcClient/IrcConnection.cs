@@ -1,9 +1,9 @@
 using System.Buffers;
+using System.Diagnostics.CodeAnalysis;
 using System.IO.Pipelines;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Text;
-using System.Threading.Channels;
 
 namespace IrcClient;
 
@@ -15,27 +15,13 @@ namespace IrcClient;
 /// </remarks>
 public sealed class IrcConnection : IAsyncDisposable
 {
-    private readonly CancellationTokenSource _disconnect;
-    private readonly Channel<IrcMessage> _incoming;
-    private readonly Channel<IrcMessage> _outgoing;
-
-    private Task? _sendTask;
-    private Task? _receiveTask;
+    private PipeReader? _pipe;
     private Stream? _stream;
 
-    public IrcConnection()
-    {
-        _disconnect = new CancellationTokenSource();
-        _incoming = Channel.CreateUnbounded<IrcMessage>(
-            new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
-        _outgoing = Channel.CreateUnbounded<IrcMessage>(
-            new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
-    }
-
-    public async Task ConnectAsync(string hostname, int port, bool useSsl)
+    public async Task ConnectAsync(string hostname, int port, bool useSsl, CancellationToken token)
     {
         var socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
-        await socket.ConnectAsync(hostname, port, _disconnect.Token);
+        await socket.ConnectAsync(hostname, port, token);
         _stream = new NetworkStream(socket, ownsSocket: true);
 
         if (useSsl)
@@ -44,128 +30,74 @@ public sealed class IrcConnection : IAsyncDisposable
             await sslStream.AuthenticateAsClientAsync(new SslClientAuthenticationOptions
             {
                 TargetHost = hostname,
-            }, _disconnect.Token);
+            }, token);
             _stream = sslStream;
         }
 
-        _sendTask = SendLoop();
-        _receiveTask = ReceiveLoop();
+        _pipe = PipeReader.Create(_stream, new StreamPipeReaderOptions(leaveOpen: true));
     }
 
-    public ValueTask<IrcMessage> ReceiveMessageAsync(CancellationToken cancelToken = default)
+    public async Task<IrcMessage> ReceiveMessageAsync(CancellationToken token)
     {
-        using var merged = CancellationTokenSource.CreateLinkedTokenSource(_disconnect.Token, cancelToken);
-        return _incoming.Reader.ReadAsync(merged.Token);
-    }
+        AssertConnected();
 
-    public void SendMessage(IrcMessage message)
-    {
-        // channel is unbounded, no need to check the return value of TryWrite
-        _outgoing.Writer.TryWrite(message);
-    }
-
-    public async Task DisconnectAsync()
-    {
-        _disconnect.Cancel();
-        if (_stream is null) return;
-
-        try
+        while (true)
         {
-            await Task.WhenAll(_sendTask!, _receiveTask!);
-        }
-        catch (OperationCanceledException) {}
+            var result = await _pipe.ReadAsync(token);
+            var buffer = result.Buffer;
 
-        await _stream.DisposeAsync();
-    }
-
-    private async Task ReceiveLoop()
-    {
-        if (_stream is null)
-        {
-            throw new InvalidOperationException("Not connected to an IRC network");
-        }
-
-        var pipe = new Pipe();
-        var writer = FillPipeAsync(pipe.Writer);
-        var reader = ReadPipeAsync(pipe.Reader);
-
-        await Task.WhenAll(writer, reader);
-    }
-
-    private async Task SendLoop()
-    {
-        while (!_disconnect.IsCancellationRequested)
-        {
-            var message = await _outgoing.Reader.ReadAsync(_disconnect.Token);
-            var bytes = Encoding.UTF8.GetBytes(message.ToString());
-            await _stream!.WriteAsync(bytes, _disconnect.Token);
-        }
-    }
-
-    private async Task FillPipeAsync(PipeWriter writer)
-    {
-        const int bufferSize = 1024;
-
-        try
-        {
-            while (!_disconnect.IsCancellationRequested)
+            if (!TryReadMessage(buffer, out var consumed, out var message))
             {
-                var memory = writer.GetMemory(bufferSize);
-                var bytesRead = await _stream!.ReadAsync(memory, _disconnect.Token);
-                if (bytesRead == 0) break;
-                writer.Advance(bytesRead);
-                var result = await writer.FlushAsync(_disconnect.Token);
-                if (result.IsCompleted) break;
+                _pipe.AdvanceTo(consumed: consumed, examined: buffer.End);
+                continue;
             }
-        }
-        finally
-        {
-            await writer.CompleteAsync();
-        }
-    }
 
-    private async Task ReadPipeAsync(PipeReader reader)
-    {
-        try
-        {
-            while (!_disconnect.IsCancellationRequested)
+            _pipe.AdvanceTo(consumed: consumed, examined: consumed);
+            if (result.IsCompleted)
             {
-                var result = await reader.ReadAsync(_disconnect.Token);
-                var buffer = result.Buffer;
-
-                var consumed = ReadLines(buffer);
-                reader.AdvanceTo(consumed: consumed, examined: buffer.End);
-
-                if (result.IsCompleted) break;
+                await _pipe.CompleteAsync();
             }
-        }
-        finally
-        {
-            await reader.CompleteAsync();
-            _incoming.Writer.Complete();
+            return message;
         }
     }
 
-    private SequencePosition ReadLines(ReadOnlySequence<byte> buffer)
+    public async Task SendMessageAsync(IrcMessage message, CancellationToken token)
     {
+        AssertConnected();
+        var bytes = Encoding.UTF8.GetBytes(message.ToString());
+        await _stream.WriteAsync(bytes, token);
+    }
+
+    public Task DisconnectAsync() => DisposeAsync().AsTask();
+
+    [MemberNotNull(nameof(_pipe), nameof(_stream))]
+    private void AssertConnected()
+    {
+        if (_stream is null || _pipe is null) throw new InvalidOperationException("Not connected to an IRC network");
+    }
+
+    private bool TryReadMessage(ReadOnlySequence<byte> buffer, out SequencePosition consumed, [NotNullWhen(true)] out IrcMessage? message)
+    {
+        message = default;
         var reader = new SequenceReader<byte>(buffer);
-        while (reader.TryReadTo(out ReadOnlySequence<byte> read, delimiter: "\r\n"u8, advancePastDelimiter: true))
+        if (reader.TryReadTo(out ReadOnlySequence<byte> read, delimiter: "\r\n"u8, advancePastDelimiter: true))
         {
-            // the channel is unbounded, so need to check return value of TryWrite
-            _incoming.Writer.TryWrite(IrcMessage.Parse(Encoding.UTF8.GetString(read)));
+            consumed = reader.Position;
+            message = IrcMessage.Parse(Encoding.UTF8.GetString(read));
+            return true;
         }
 
-        return reader.Position;
+        consumed = reader.Position;
+        return false;
     }
 
     public async ValueTask DisposeAsync()
     {
-        _disconnect.Cancel();
-        _disconnect.Dispose();
-        if (_stream is not null)
-        {
-            await DisconnectAsync();
-            await _stream.DisposeAsync();
-        }
+        if (_pipe is null || _stream is null) return;
+        await _pipe.CompleteAsync();
+        await _stream.DisposeAsync();
+
+        _stream = null;
+        _pipe = null;
     }
 }
