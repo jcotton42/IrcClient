@@ -48,7 +48,7 @@ public sealed class IrcConnection : IAsyncDisposable
 
             if (!TryReadMessage(buffer, out var consumed, out var message))
             {
-                _pipe.AdvanceTo(consumed: consumed, examined: buffer.End);
+                _pipe.AdvanceTo(consumed: buffer.Start, examined: buffer.End);
                 continue;
             }
 
@@ -79,6 +79,7 @@ public sealed class IrcConnection : IAsyncDisposable
     private bool TryReadMessage(ReadOnlySequence<byte> buffer, out SequencePosition consumed, [NotNullWhen(true)] out IrcMessage? message)
     {
         message = default;
+        consumed = default;
         var reader = new SequenceReader<byte>(buffer);
         if (reader.TryReadTo(out ReadOnlySequence<byte> read, delimiter: "\r\n"u8, advancePastDelimiter: true))
         {
@@ -87,7 +88,6 @@ public sealed class IrcConnection : IAsyncDisposable
             return true;
         }
 
-        consumed = reader.Position;
         return false;
     }
 

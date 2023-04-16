@@ -9,6 +9,17 @@ public sealed class IrcMessage
     public required IReadOnlyDictionary<string, string?> Tags { get; init; }
     public required IReadOnlyList<string> Parameters { get; init; }
 
+    public static IrcMessage Create(string command, params string[] parameters)
+    {
+        return new IrcMessage
+        {
+            Tags = new Dictionary<string, string?>().AsReadOnly(),
+            Source = null,
+            Command = command,
+            Parameters = parameters.AsReadOnly(),
+        };
+    }
+
     public static IrcMessage Parse(ReadOnlySpan<char> message)
     {
         IReadOnlyDictionary<string, string?>? tags = null;
