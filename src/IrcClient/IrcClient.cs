@@ -1,6 +1,8 @@
 using System.Threading.Channels;
 using System.Threading.RateLimiting;
 
+using IrcClient.Messages;
+
 namespace IrcClient;
 
 public sealed class IrcClient : IAsyncDisposable
@@ -17,6 +19,7 @@ public sealed class IrcClient : IAsyncDisposable
     public IrcClient(IrcClientOptions options)
     {
         _connection = new IrcConnection();
+        _counter = new SemaphoreSlim(0);
         _options = options;
         _rateLimiter = new FixedWindowRateLimiter(new FixedWindowRateLimiterOptions
         {
@@ -37,14 +40,14 @@ public sealed class IrcClient : IAsyncDisposable
         var receiveTask = ReceiveLoop(stopToken);
 
         State = IrcClientState.Registering;
-        SendMessageImmediately(IrcMessage.Create("CAP", "LS", "302"));
+        SendMessageImmediately(IrcMessage.Factory.CapLs());
         if (_options.Password is not null)
         {
-            SendMessageImmediately(IrcMessage.Create("PASS", _options.Password));
+            SendMessageImmediately(IrcMessage.Factory.Pass(_options.Password));
         }
 
-        SendMessageImmediately(IrcMessage.Create("NICK", _options.Nick));
-        SendMessageImmediately(IrcMessage.Create("USER", _options.Username, "0", "*", _options.Realname));
+        SendMessageImmediately(IrcMessage.Factory.Nick(_options.Nick));
+        SendMessageImmediately(IrcMessage.Factory.User(_options.Username, _options.Realname));
 
         try
         {

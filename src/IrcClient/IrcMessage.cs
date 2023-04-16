@@ -4,6 +4,7 @@ namespace IrcClient;
 
 public sealed class IrcMessage
 {
+    public static IrcMessageFactory Factory { get; } = new();
     public required string Command { get; init; }
     public required string? Source { get; init;  }
     public required IReadOnlyDictionary<string, string?> Tags { get; init; }
@@ -225,3 +226,8 @@ public sealed class IrcMessage
         }
     }
 }
+
+/// <summary>
+/// Empty type, to be used as a place for extension methods on <see cref="IrcMessage.Factory"/>.
+/// </summary>
+public sealed class IrcMessageFactory { }
