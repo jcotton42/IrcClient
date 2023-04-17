@@ -1,4 +1,4 @@
-namespace IrcClient.Messages;
+namespace IrcClient.Infrastructure;
 
 public interface IFromMessage<T> where T : IFromMessage<T>
 {

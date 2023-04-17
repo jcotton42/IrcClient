@@ -1,7 +1,7 @@
 using System.Threading.Channels;
 using System.Threading.RateLimiting;
 
-using IrcClient.Messages;
+using IrcClient.Features.Registration;
 
 namespace IrcClient;
 
@@ -14,7 +14,7 @@ public sealed class IrcClient : IAsyncDisposable
     private readonly Channel<IrcMessage> _toSend;
     private readonly Channel<IrcMessage> _toSendImmediately;
 
-    public IrcClientState State { get; private set; } = IrcClientState.Disconnected;
+    public IrcClientState State { get; } = new();
 
     public IrcClient(IrcClientOptions options)
     {
@@ -39,7 +39,7 @@ public sealed class IrcClient : IAsyncDisposable
         var sendTask = SendLoop(stopToken);
         var receiveTask = ReceiveLoop(stopToken);
 
-        State = IrcClientState.Registering;
+        State.Status = ClientStatus.Registering;
         SendMessageImmediately(IrcMessage.Factory.CapLs());
         if (_options.Password is not null)
         {
@@ -100,11 +100,22 @@ public sealed class IrcClient : IAsyncDisposable
         _counter.Dispose();
         await _connection.DisposeAsync();
     }
-}
 
-public enum IrcClientState
-{
-    Disconnected,
-    Registering,
-    Connected,
+    internal void EnableCapabilities(IReadOnlySet<string> enabledCapabilities)
+    {
+        if (enabledCapabilities.Contains("sasl")) State.SaslAvailable = true;
+    }
+
+    internal void DisableCapabilities(IReadOnlySet<string> removedCapabilities)
+    {
+        if (removedCapabilities.Contains("sasl")) State.SaslAvailable = false;
+    }
+
+    internal void ProcessCapabilityMetadata(IReadOnlyDictionary<string, string?> capabilities)
+    {
+        if (capabilities.GetValueOrDefault("sasl") is { } saslMechs)
+        {
+            State.SupportedSaslMechanisms = saslMechs.Split(',', StringSplitOptions.RemoveEmptyEntries);
+        }
+    }
 }
