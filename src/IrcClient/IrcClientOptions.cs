@@ -1,6 +1,6 @@
 namespace IrcClient;
 
-public class IrcClientOptions
+public sealed class IrcClientOptions
 {
     public required string Hostname { get; init; }
     public required int Port { get; init; }
@@ -9,4 +9,12 @@ public class IrcClientOptions
     public required string Nick { get; init; }
     public required string Username { get; init; }
     public required string Realname { get; init; }
+
+    public SaslPlain? SaslPlain { get; init; }
+}
+
+public sealed class SaslPlain
+{
+    public required string Username { get; init; }
+    public required string Password { get; init; }
 }

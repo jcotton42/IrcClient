@@ -33,17 +33,32 @@ public sealed class RegistrationResponder : IResponder<Cap>
 
     private void LsOrNew(IrcClient client, IReadOnlyDictionary<string, string?> availableCapabilities, bool moreComing)
     {
+        client.State.Status = ClientStatus.NegotiatingCapabilities;
         client.ProcessCapabilityMetadata(availableCapabilities);
-        var toReq = availableCapabilities.Keys.Intersect(SupportedCapabilities);
-        client.SendMessageImmediately(IrcMessage.Factory.CapReq(toReq));
-        // TODO if more coming/not coming?
+        var toReq = availableCapabilities.Keys.Intersect(SupportedCapabilities).ToHashSet();
+        if (toReq.Contains("sasl") && client.ShouldAuthenticate())
+        {
+            client.State.WaitingOnSasl = true;
+        }
+        client.State.ReceivedAllCaps = !moreComing;
+        if (toReq.Any()) client.SendMessageImmediately(IrcMessage.Factory.CapReq(toReq));
+        if (client.State is { ReceivedAllCaps: true, WaitingOnSasl: false })
+        {
+            client.SendMessageImmediately(IrcMessage.Factory.CapEnd());
+        }
     }
 
+    // EnableCapabilities is what sends AUTHENTICATE
+    // I **really** need to clean this up
     private void Ack(IrcClient client, Cap.Ack message) => client.EnableCapabilities(message.EnabledCapabilities);
 
     private void Nak(IrcClient client, Cap.Nak message)
     {
-        // TODO
+        if (message.RejectedCapabilities.Contains("sasl")) client.State.WaitingOnSasl = false;
+        if (client.State is { ReceivedAllCaps: true, WaitingOnSasl: false })
+        {
+            client.SendMessageImmediately(IrcMessage.Factory.CapEnd());
+        }
     }
 
     private void Del(IrcClient client, Cap.Del message) => client.DisableCapabilities(message.RemovedCapabilities);

@@ -36,6 +36,7 @@ public sealed class IrcClient : IAsyncDisposable
     public async Task RunAsync(CancellationToken stopToken)
     {
         await _connection.ConnectAsync(_options.Hostname, _options.Port, _options.UseSsl, stopToken);
+        // TODO use separate tokens for these so I can send QUIT when stopToken is tripped before disconnecting
         var sendTask = SendLoop(stopToken);
         var receiveTask = ReceiveLoop(stopToken);
 
@@ -91,8 +92,11 @@ public sealed class IrcClient : IAsyncDisposable
 
     private async Task ReceiveLoop(CancellationToken stopToken)
     {
-        var message = await _connection.ReceiveMessageAsync(stopToken);
-        // TODO dispatch message
+        while (!stopToken.IsCancellationRequested)
+        {
+            var message = await _connection.ReceiveMessageAsync(stopToken);
+            // TODO dispatch message
+        }
     }
 
     public async ValueTask DisposeAsync()
@@ -103,12 +107,22 @@ public sealed class IrcClient : IAsyncDisposable
 
     internal void EnableCapabilities(IReadOnlySet<string> enabledCapabilities)
     {
-        if (enabledCapabilities.Contains("sasl")) State.SaslAvailable = true;
+        if (enabledCapabilities.Contains("sasl"))
+        {
+            State.IsSaslAvailable = true;
+            // pre-3.2 servers don't tell us ahead of time what SASL mechanisms they support, in which case the list
+            // will be null. PLAIN is a good default
+            if (ShouldAuthenticate())
+            {
+                SendMessageImmediately(IrcMessage.Factory.Authenticate("PLAIN"));
+                State.Status = ClientStatus.Authenticating;
+            }
+        }
     }
 
     internal void DisableCapabilities(IReadOnlySet<string> removedCapabilities)
     {
-        if (removedCapabilities.Contains("sasl")) State.SaslAvailable = false;
+        if (removedCapabilities.Contains("sasl")) State.IsSaslAvailable = false;
     }
 
     internal void ProcessCapabilityMetadata(IReadOnlyDictionary<string, string?> capabilities)
@@ -118,4 +132,8 @@ public sealed class IrcClient : IAsyncDisposable
             State.SupportedSaslMechanisms = saslMechs.Split(',', StringSplitOptions.RemoveEmptyEntries);
         }
     }
+
+    internal bool ShouldAuthenticate() =>
+        _options.SaslPlain is not null
+        && (State.SupportedSaslMechanisms is null || State.SupportedSaslMechanisms.Contains("PLAIN"));
 }
