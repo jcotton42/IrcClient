@@ -1,8 +1,12 @@
+using System.Buffers.Text;
+using System.Diagnostics;
+using System.Text;
+
 using IrcClient.Infrastructure;
 
 namespace IrcClient.Features.Registration;
 
-public sealed class RegistrationResponder : IResponder<Cap>
+public sealed class RegistrationResponder : IResponder<Cap>, IResponder<Authenticate>
 {
     private readonly static HashSet<string> SupportedCapabilities = new() { "cap-notify", "sasl" };
 
@@ -62,4 +66,25 @@ public sealed class RegistrationResponder : IResponder<Cap>
     }
 
     private void Del(IrcClient client, Cap.Del message) => client.DisableCapabilities(message.RemovedCapabilities);
+
+    public Task HandleAsync(IrcClient client, Authenticate message)
+    {
+        // TODO right now PLAIN is assumed, eventually this will need to be updated for that
+        // I'm thinking a discriminated union of the various SASL options?
+        // That will also take care of the use of ! below
+        Debug.Assert(message.Payload == Authenticate.EmptyPayload, "SASL PLAIN starts with an empty server payload");
+        var username = client.Options.SaslPlain!.Username;
+        var password = client.Options.SaslPlain!.Password;
+        var payload = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}\0{username}\0{password}"));
+
+        var lastWas400 = false;
+        for (var offset = 0; offset < payload.Length; offset += 400)
+        {
+            var chunk = payload[offset..Math.Min(offset + 400, payload.Length)];
+            lastWas400 = chunk.Length == 400;
+            client.SendMessageImmediately(IrcMessage.Factory.Authenticate(chunk));
+        }
+        if (lastWas400) client.SendMessageImmediately(IrcMessage.Factory.Authenticate("+"));
+        return Task.CompletedTask;
+    }
 }

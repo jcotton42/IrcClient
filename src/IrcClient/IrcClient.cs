@@ -9,18 +9,18 @@ public sealed class IrcClient : IAsyncDisposable
 {
     private readonly IrcConnection _connection;
     private readonly SemaphoreSlim _counter;
-    private readonly IrcClientOptions _options;
     private readonly RateLimiter _rateLimiter;
     private readonly Channel<IrcMessage> _toSend;
     private readonly Channel<IrcMessage> _toSendImmediately;
 
     public IrcClientState State { get; } = new();
+    public IrcClientOptions Options { get; }
 
     public IrcClient(IrcClientOptions options)
     {
         _connection = new IrcConnection();
         _counter = new SemaphoreSlim(0);
-        _options = options;
+        Options = options;
         _rateLimiter = new FixedWindowRateLimiter(new FixedWindowRateLimiterOptions
         {
             AutoReplenishment = true,
@@ -35,20 +35,20 @@ public sealed class IrcClient : IAsyncDisposable
 
     public async Task RunAsync(CancellationToken stopToken)
     {
-        await _connection.ConnectAsync(_options.Hostname, _options.Port, _options.UseSsl, stopToken);
+        await _connection.ConnectAsync(Options.Hostname, Options.Port, Options.UseSsl, stopToken);
         // TODO use separate tokens for these so I can send QUIT when stopToken is tripped before disconnecting
         var sendTask = SendLoop(stopToken);
         var receiveTask = ReceiveLoop(stopToken);
 
         State.Status = ClientStatus.Registering;
         SendMessageImmediately(IrcMessage.Factory.CapLs());
-        if (_options.Password is not null)
+        if (Options.Password is not null)
         {
-            SendMessageImmediately(IrcMessage.Factory.Pass(_options.Password));
+            SendMessageImmediately(IrcMessage.Factory.Pass(Options.Password));
         }
 
-        SendMessageImmediately(IrcMessage.Factory.Nick(_options.Nick));
-        SendMessageImmediately(IrcMessage.Factory.User(_options.Username, _options.Realname));
+        SendMessageImmediately(IrcMessage.Factory.Nick(Options.Nick));
+        SendMessageImmediately(IrcMessage.Factory.User(Options.Username, Options.Realname));
 
         try
         {
@@ -134,6 +134,6 @@ public sealed class IrcClient : IAsyncDisposable
     }
 
     internal bool ShouldAuthenticate() =>
-        _options.SaslPlain is not null
+        Options.SaslPlain is not null
         && (State.SupportedSaslMechanisms is null || State.SupportedSaslMechanisms.Contains("PLAIN"));
 }
