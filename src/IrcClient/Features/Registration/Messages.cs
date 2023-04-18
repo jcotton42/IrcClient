@@ -2,28 +2,16 @@ using IrcClient.Infrastructure;
 
 namespace IrcClient.Features.Registration;
 
-public abstract class Cap : IFromMessage<Cap>
+public abstract class Cap : TypedMessage
 {
-    public static string Command => "CAP";
-
-    public static Cap FromMessage(IrcMessage message)
-    {
-        return message.Parameters[1].ToUpperInvariant() switch
-        {
-            "LS" => Ls.FromMessageInner(message),
-            "LIST" => List.FromMessageInner(message),
-            "ACK" => Ack.FromMessageInner(message),
-            "NAK" => Nak.FromMessageInner(message),
-            "NEW" => New.FromMessageInner(message),
-            "DEL" => Del.FromMessageInner(message),
-            _ => throw new NotImplementedException(),
-        };
-    }
+    private Cap(IrcMessage message) : base(message) { }
 
     public sealed class Ls : Cap
     {
         public required IReadOnlyDictionary<string, string?> AvailableCapabilities { get; init; }
         public required bool MoreComing { get; init; }
+
+        public Ls(IrcMessage message) : base(message) { }
 
         public static Ls FromMessageInner(IrcMessage message)
         {
@@ -38,7 +26,7 @@ public abstract class Cap : IFromMessage<Cap>
                 else caps[split[0]] = split[1];
             }
 
-            return new Ls { AvailableCapabilities = caps, MoreComing = moreComing };
+            return new Ls(message) { AvailableCapabilities = caps, MoreComing = moreComing };
         }
     }
 
@@ -47,11 +35,13 @@ public abstract class Cap : IFromMessage<Cap>
         public required bool MoreComing { get; init; }
         public required IReadOnlySet<string> EnabledCapabilities { get; init; }
 
+        public List(IrcMessage message) : base(message) { }
+
         public static List FromMessageInner(IrcMessage message)
         {
             var moreComing = message.Parameters[2] == "*";
             var caps = moreComing ? message.Parameters[3] : message.Parameters[2];
-            return new List
+            return new List(message)
             {
                 MoreComing = moreComing,
                 EnabledCapabilities = new HashSet<string>(caps.Split(' ',
@@ -66,6 +56,8 @@ public abstract class Cap : IFromMessage<Cap>
         public required IReadOnlySet<string> EnabledCapabilities { get; init; }
         public required IReadOnlySet<string> DisabledCapabilities { get; init; }
 
+        public Ack(IrcMessage message) : base(message) { }
+
         public static Ack FromMessageInner(IrcMessage message)
         {
             var moreComing = message.Parameters[2] == "*";
@@ -79,7 +71,7 @@ public abstract class Cap : IFromMessage<Cap>
                 else enabledCaps.Add(cap);
             }
 
-            return new Ack
+            return new Ack(message)
             {
                 MoreComing = moreComing, EnabledCapabilities = enabledCaps, DisabledCapabilities = disabledCaps,
             };
@@ -91,12 +83,14 @@ public abstract class Cap : IFromMessage<Cap>
         public required bool MoreComing { get; init; }
         public required IReadOnlySet<string> RejectedCapabilities { get; init; }
 
+        public Nak(IrcMessage message) : base(message) { }
+
         public static Nak FromMessageInner(IrcMessage message)
         {
             var moreComing = message.Parameters[2] == "*";
             var caps = moreComing ? message.Parameters[3] : message.Parameters[2];
 
-            return new Nak
+            return new Nak(message)
             {
                 MoreComing = moreComing,
                 RejectedCapabilities = new HashSet<string>(caps.Split(' ',
@@ -109,6 +103,8 @@ public abstract class Cap : IFromMessage<Cap>
     {
         public required IReadOnlyDictionary<string, string?> AddedCapabilities { get; init; }
 
+        public New(IrcMessage message) : base(message) { }
+
         public static New FromMessageInner(IrcMessage message)
         {
             var caps = new Dictionary<string, string?>();
@@ -120,7 +116,7 @@ public abstract class Cap : IFromMessage<Cap>
                 else caps[split[0]] = split[1];
             }
 
-            return new New { AddedCapabilities = caps };
+            return new New(message) { AddedCapabilities = caps };
         }
     }
 
@@ -128,106 +124,176 @@ public abstract class Cap : IFromMessage<Cap>
     {
         public required IReadOnlySet<string> RemovedCapabilities { get; init; }
 
+        public Del(IrcMessage message) : base(message) { }
+
         public static Del FromMessageInner(IrcMessage message)
         {
-            return new Del
+            return new Del(message)
             {
                 RemovedCapabilities = new HashSet<string>(message.Parameters[2].Split(' ',
                     StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)),
             };
         }
     }
+
+    public sealed class Factory : ITypedMessageFactory
+    {
+        public string Command => "CAP";
+        public IMessage FromMessage(IrcMessage message)
+        {
+            return message.Parameters[1].ToUpperInvariant() switch
+            {
+                "LS" => Ls.FromMessageInner(message),
+                "LIST" => List.FromMessageInner(message),
+                "ACK" => Ack.FromMessageInner(message),
+                "NAK" => Nak.FromMessageInner(message),
+                "NEW" => New.FromMessageInner(message),
+                "DEL" => Del.FromMessageInner(message),
+                _ => throw new NotImplementedException(),
+            };
+        }
+    }
 }
 
-public sealed class Nick : IFromMessage<Nick>
+public sealed class Nick : TypedMessage
 {
     public required string Nickname { get; init; }
-    public static string Command => "NICK";
-    public static Nick FromMessage(IrcMessage message) => new() { Nickname = message.Parameters[0] };
+
+    public Nick(IrcMessage message) : base(message) { }
+
+    public sealed class Factory : ITypedMessageFactory
+    {
+        public string Command => "NICK";
+        public IMessage FromMessage(IrcMessage message) => new Nick(message) { Nickname = message.Parameters[0] };
+    }
 }
 
-public sealed class Authenticate : IFromMessage<Authenticate>
+public sealed class Authenticate : TypedMessage
 {
     public const string EmptyPayload = "+";
     public required string Payload { get; init; }
 
-    public static string Command => "AUTHENTICATE";
+    public Authenticate(IrcMessage message) : base(message) { }
 
-    public static Authenticate FromMessage(IrcMessage message) => new() { Payload = message.Parameters[0] };
+    public sealed class Factory : ITypedMessageFactory
+    {
+        public string Command => "AUTHENTICATE";
+
+        public IMessage FromMessage(IrcMessage message) => new Authenticate(message) { Payload = message.Parameters[0] };
+    }
 }
 
-public sealed class LoggedIn : IFromMessage<LoggedIn>
+public sealed class LoggedIn : TypedMessage
 {
     public required string Nickname { get; init; }
     public required string Ident { get; init; }
     public required string AccountName { get; init; }
     public required string Message { get; init; }
 
-    public static string Command => "900"; // RPL_LOGGEDIN
+    public LoggedIn(IrcMessage message) : base(message) { }
 
-    public static LoggedIn FromMessage(IrcMessage message) => new()
+    public sealed class Factory : ITypedMessageFactory
     {
-        Nickname = message.Parameters[0],
-        Ident = message.Parameters[1],
-        AccountName = message.Parameters[2],
-        Message = message.Parameters[3],
-    };
+        public string Command => "900"; // RPL_LOGGEDIN
+
+        public IMessage FromMessage(IrcMessage message) => new LoggedIn(message)
+        {
+            Nickname = message.Parameters[0],
+            Ident = message.Parameters[1],
+            AccountName = message.Parameters[2],
+            Message = message.Parameters[3],
+        };
+    }
 }
 
-public sealed class LoggedOut : IFromMessage<LoggedOut>
+public sealed class LoggedOut : TypedMessage
 {
-    public static string Command => "901"; // RPL_LOGGEDOUT
-    public static LoggedOut FromMessage(IrcMessage message) => new();
+    public LoggedOut(IrcMessage message) : base(message) { }
+
+    public sealed class Factory : ITypedMessageFactory
+    {
+        public string Command => "901"; // RPL_LOGGEDOUT
+        public IMessage FromMessage(IrcMessage message) => new LoggedOut(message);
+    }
 }
 
-public sealed class AccountLockedError : IFromMessage<AccountLockedError>
+public sealed class AccountLockedError : TypedMessage
 {
     public required string Reason { get; init; }
 
-    public static string Command => "902"; // ERR_NICKLOCKED
-    public static AccountLockedError FromMessage(IrcMessage message) => new() { Reason = message.Parameters[1] };
+    public AccountLockedError(IrcMessage message) : base(message) { }
+
+    public sealed class Factory : ITypedMessageFactory
+    {
+        public string Command => "902"; // ERR_NICKLOCKED
+        public IMessage FromMessage(IrcMessage message) => new AccountLockedError(message) { Reason = message.Parameters[1] };
+    }
 }
 
-public sealed class SaslFailError : IFromMessage<SaslFailError>
+public sealed class SaslFailError : TypedMessage
 {
     public required string Reason { get; init; }
 
-    public static string Command => "904"; // ERR_SASLFAIL
-    public static SaslFailError FromMessage(IrcMessage message) => new() { Reason = message.Parameters[1] };
+    public SaslFailError(IrcMessage message) : base(message) { }
+
+    public sealed class Factory : ITypedMessageFactory
+    {
+        public string Command => "904"; // ERR_SASLFAIL
+        public IMessage FromMessage(IrcMessage message) => new SaslFailError(message) { Reason = message.Parameters[1] };
+    }
 }
 
-public sealed class AlreadyRegisteredError : IFromMessage<AlreadyRegisteredError>
+public sealed class AlreadyRegisteredError : TypedMessage
 {
-    public static string Command => "462"; // ERR_ALREADYREGISTERED
-    public static AlreadyRegisteredError FromMessage(IrcMessage _) => new();
+    public AlreadyRegisteredError(IrcMessage message) : base(message) { }
+
+    public sealed class Factory : ITypedMessageFactory
+    {
+        public string Command => "462"; // ERR_ALREADYREGISTERED
+        public IMessage FromMessage(IrcMessage message) => new AlreadyRegisteredError(message);
+    }
 }
 
-public sealed class IncorrectPasswordError : IFromMessage<IncorrectPasswordError>
+public sealed class IncorrectPasswordError : TypedMessage
 {
-    public static string Command => "464"; // ERR_PASSWDMISMATCH
-    public static IncorrectPasswordError FromMessage(IrcMessage _) => new();
+    public IncorrectPasswordError(IrcMessage message) : base(message) { }
+
+    public sealed class Factory : ITypedMessageFactory
+    {
+        public string Command => "464"; // ERR_PASSWDMISMATCH
+        public IMessage FromMessage(IrcMessage message) => new IncorrectPasswordError(message);
+    }
 }
 
-public sealed class ErroneousNicknameError : IFromMessage<ErroneousNicknameError>
+public sealed class ErroneousNicknameError : TypedMessage
 {
     public required string Nickname { get; init; }
     public required string Reason { get; init; }
 
-    public static string Command => "432"; // ERR_ERRONEUSNICKNAME
+    public ErroneousNicknameError(IrcMessage message) : base(message) { }
 
-    public static ErroneousNicknameError FromMessage(IrcMessage message) =>
-        new() { Nickname = message.Parameters[1], Reason = message.Parameters[2] };
+    public sealed class Factory : ITypedMessageFactory
+    {
+        public string Command => "432"; // ERR_ERRONEUSNICKNAME
+        public IMessage FromMessage(IrcMessage message) =>
+            new ErroneousNicknameError(message) { Nickname = message.Parameters[1], Reason = message.Parameters[2] };
+    }
 }
 
-public sealed class NicknameInUseError : IFromMessage<NicknameInUseError>
+public sealed class NicknameInUseError : TypedMessage
 {
     public required string Nickname { get; init; }
     public required string Reason { get; init; }
 
-    public static string Command => "433"; // ERR_NICKNAMEINUSE
+    public NicknameInUseError(IrcMessage message) : base(message) { }
 
-    public static NicknameInUseError FromMessage(IrcMessage message) =>
-        new() { Nickname = message.Parameters[1], Reason = message.Parameters[2] };
+    public sealed class Factory : ITypedMessageFactory
+    {
+        public string Command => "433"; // ERR_NICKNAMEINUSE
+
+        public IMessage FromMessage(IrcMessage message) =>
+            new NicknameInUseError(message) { Nickname = message.Parameters[1], Reason = message.Parameters[2] };
+    }
 }
 
 // TODO horsedocs mentions an ERR_NICKCOLLISION (436), with no further details

@@ -1,8 +1,10 @@
 ﻿using System.Text;
 
+using IrcClient.Infrastructure;
+
 namespace IrcClient;
 
-public sealed class IrcMessage
+public sealed class IrcMessage : IMessage
 {
     public static IrcMessageFactory Factory { get; } = new();
     public required string Command { get; init; }

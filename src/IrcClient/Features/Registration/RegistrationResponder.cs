@@ -10,7 +10,7 @@ public sealed class RegistrationResponder : IResponder<Cap>, IResponder<Authenti
 {
     private readonly static HashSet<string> SupportedCapabilities = new() { "cap-notify", "sasl" };
 
-    public Task HandleAsync(IrcClient client, Cap message)
+    public Task HandleAsync(IrcClient client, Cap message, CancellationToken ct)
     {
         switch (message)
         {
@@ -67,7 +67,7 @@ public sealed class RegistrationResponder : IResponder<Cap>, IResponder<Authenti
 
     private void Del(IrcClient client, Cap.Del message) => client.DisableCapabilities(message.RemovedCapabilities);
 
-    public Task HandleAsync(IrcClient client, Authenticate message)
+    public Task HandleAsync(IrcClient client, Authenticate message, CancellationToken ct)
     {
         // TODO right now PLAIN is assumed, eventually this will need to be updated for that
         // I'm thinking a discriminated union of the various SASL options?

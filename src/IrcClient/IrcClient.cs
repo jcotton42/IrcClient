@@ -2,6 +2,7 @@ using System.Threading.Channels;
 using System.Threading.RateLimiting;
 
 using IrcClient.Features.Registration;
+using IrcClient.Infrastructure;
 
 namespace IrcClient;
 
@@ -9,6 +10,8 @@ public sealed class IrcClient : IAsyncDisposable
 {
     private readonly IrcConnection _connection;
     private readonly SemaphoreSlim _counter;
+    private readonly ResponderDispatch _dispatch;
+    private readonly IReadOnlyDictionary<string, ITypedMessageFactory> _messageFactories;
     private readonly RateLimiter _rateLimiter;
     private readonly Channel<IrcMessage> _toSend;
     private readonly Channel<IrcMessage> _toSendImmediately;
@@ -16,11 +19,13 @@ public sealed class IrcClient : IAsyncDisposable
     public IrcClientState State { get; } = new();
     public IrcClientOptions Options { get; }
 
-    public IrcClient(IrcClientOptions options)
+    public IrcClient(IrcClientOptions options, ResponderDispatch dispatch, IEnumerable<ITypedMessageFactory> typedMessageFactories)
     {
         _connection = new IrcConnection();
         _counter = new SemaphoreSlim(0);
+        _dispatch = dispatch;
         Options = options;
+        // TODO maybe move this to the options?
         _rateLimiter = new FixedWindowRateLimiter(new FixedWindowRateLimiterOptions
         {
             AutoReplenishment = true,
@@ -31,6 +36,18 @@ public sealed class IrcClient : IAsyncDisposable
         });
         _toSend = Channel.CreateUnbounded<IrcMessage>(new UnboundedChannelOptions { SingleReader = true });
         _toSendImmediately = Channel.CreateUnbounded<IrcMessage>(new UnboundedChannelOptions { SingleReader = true });
+
+        var factories = new Dictionary<string, ITypedMessageFactory>();
+        foreach (var factory in typedMessageFactories)
+        {
+            if (!factories.TryAdd(factory.Command.ToUpperInvariant(), factory))
+            {
+                throw new ArgumentException($"Duplicate message factory for {factory.Command}",
+                    nameof(typedMessageFactories));
+            }
+        }
+
+        _messageFactories = factories;
     }
 
     public async Task RunAsync(CancellationToken stopToken)
@@ -95,7 +112,13 @@ public sealed class IrcClient : IAsyncDisposable
         while (!stopToken.IsCancellationRequested)
         {
             var message = await _connection.ReceiveMessageAsync(stopToken);
-            // TODO dispatch message
+            // TODO log if this returns false (unknown message type)?
+            var typedMessage = _messageFactories.TryGetValue(message.Command.ToUpperInvariant(), out var factory)
+                ? factory.FromMessage(message)
+                : message;
+            // TODO maybe move the CAP/AUTHENTICATE/other registration stuff here, it's so heavily intertwined with
+            // the client anyhow
+            _dispatch.Dispatch(message);
         }
     }
 

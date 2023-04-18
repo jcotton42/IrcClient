@@ -1,6 +1,6 @@
 namespace IrcClient.Infrastructure;
 
-public interface IResponder<T> where T : IFromMessage<T>
+public interface IResponder<in T> where T : IMessage
 {
-    Task HandleAsync(IrcClient client, T message);
+    Task HandleAsync(IrcClient client, T message, CancellationToken ct = default);
 }

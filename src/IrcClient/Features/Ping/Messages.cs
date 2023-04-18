@@ -2,24 +2,33 @@ using IrcClient.Infrastructure;
 
 namespace IrcClient.Features.Ping;
 
-public sealed class Ping : IFromMessage<Ping>
+public sealed class Ping : TypedMessage
 {
     public required string Token { get; init; }
 
-    public static string Command => "PING";
+    public Ping(IrcMessage message) : base(message) { }
 
-    public static Ping FromMessage(IrcMessage message) => new() { Token = message.Parameters[0] };
+    public sealed class Factory : ITypedMessageFactory
+    {
+        public string Command => "PING";
+        public IMessage FromMessage(IrcMessage message) => new Ping(message) { Token = message.Parameters[0] };
+    }
 }
 
-public sealed class Pong : IFromMessage<Pong>
+public sealed class Pong : TypedMessage
 {
     public required string Server { get; init; }
     public required string Token { get; init; }
 
-    public static string Command => "PONG";
+    public Pong(IrcMessage message) : base(message) { }
 
-    public static Pong FromMessage(IrcMessage message) =>
-        new Pong { Server = message.Parameters[0], Token = message.Parameters[1] };
+    public sealed class Factory : ITypedMessageFactory
+    {
+        public string Command => "PONG";
+
+        public IMessage FromMessage(IrcMessage message) =>
+            new Pong(message) { Server = message.Parameters[0], Token = message.Parameters[1] };
+    }
 }
 
 public static class PingMessageFactory

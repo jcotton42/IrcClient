@@ -4,7 +4,7 @@ namespace IrcClient.Features.Ping;
 
 public class PingResponder : IResponder<Ping>
 {
-    public Task HandleAsync(IrcClient client, Ping message)
+    public Task HandleAsync(IrcClient client, Ping message, CancellationToken ct)
     {
         // PINGs are expected to be responded to ASAP
         client.SendMessageImmediately(IrcMessage.Factory.Pong(message.Token));
