@@ -1,9 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Text;
 
 namespace IrcClient.Messages;
@@ -33,12 +31,17 @@ public sealed class RawIrcMessage : ISpanParsable<RawIrcMessage>
 
     public static RawIrcMessage Parse(ReadOnlySpan<char> s, IFormatProvider? provider)
     {
-        throw new NotImplementedException();
+        if (!TryParseCore(s, out var result))
+        {
+            throw new FormatException("Message was not well-formed.");
+        }
+
+        return result;
     }
 
     public static bool TryParse(ReadOnlySpan<char> s, IFormatProvider? provider, [MaybeNullWhen(false)] out RawIrcMessage result)
     {
-        throw new NotImplementedException();
+        return TryParseCore(s, out result);
     }
 
     private static bool TryParseCore(ReadOnlySpan<char> s, [MaybeNullWhen(false)] out RawIrcMessage result)
@@ -75,7 +78,7 @@ public sealed class RawIrcMessage : ISpanParsable<RawIrcMessage>
         }
 
         var tagsSpan = s[1..spaceIndex];
-        s = s[(spaceIndex + 1)..];
+        s = s[spaceIndex..].SkipAll(' ');
         var tags = new Dictionary<string, string?>();
 
         var builder = new StringBuilder();
@@ -158,23 +161,106 @@ public sealed class RawIrcMessage : ISpanParsable<RawIrcMessage>
         }
 
         var sourceSpan = s[1..spaceIndex];
-        s = s[(spaceIndex + 1)..];
+        s = s[spaceIndex..].SkipAll(' ');
         return IrcMessageSource.TryParse(sourceSpan, out result);
     }
 
-    private static bool TryParseCommand(ref ReadOnlySpan<char> s, out string result)
+    private static bool TryParseCommand(ref ReadOnlySpan<char> s, [NotNullWhen(true)] out string? result)
     {
-        throw new NotImplementedException();
+        if (s.IsEmpty)
+        {
+            // TODO error about no command
+            result = null;
+            return false;
+        }
+
+        (var resultSpan, s) = s.SplitOnceConsecutive(' ');
+        result = resultSpan.ToString();
+        return true;
     }
 
     private static bool TryParseParameters(ref ReadOnlySpan<char> s, out ReadOnlyCollection<string> result)
     {
-        throw new NotImplementedException();
+        if (s.IsEmpty)
+        {
+            result = ReadOnlyCollection<string>.Empty;
+            return true;
+        }
+
+        var parameters = new List<string>();
+        while (!s.IsEmpty)
+        {
+            if (s[0] is ':')
+            {
+                parameters.Add(s[1..].ToString());
+                s = ReadOnlySpan<char>.Empty;
+                break;
+            }
+
+            (var p, s) = s.SplitOnceConsecutive(' ');
+            parameters.Add(p.ToString());
+        }
+
+        result = new ReadOnlyCollection<string>(parameters);
+        return true;
     }
 
     public override string ToString()
     {
-        // TODO
+        var builder = new StringBuilder();
+
+        if (Tags.Count > 0)
+        {
+            builder.Append('@');
+            var first = true;
+            foreach (var (key, value) in Tags)
+            {
+                if (!first)
+                {
+                    builder.Append(';');
+                }
+
+                builder.Append(key);
+                if (value is not null)
+                {
+                    builder.Append('=');
+                    foreach (var c in value)
+                    {
+                        builder.Append(c switch
+                        {
+                            ';' => @"\:",
+                            ' ' => @"\s",
+                            '\\' => @"\\",
+                            '\r' => @"\r",
+                            '\n' => @"\n",
+                            _ => [c],
+                        });
+                    }
+                }
+                first = false;
+            }
+
+            builder.Append(' ');
+        }
+
+        if (Source is not null)
+        {
+            builder.Append($":{Source} ");
+        }
+
+        builder.Append(Command);
+
+        if (Parameters is not [])
+        {
+            for (var i = 0; i < Parameters.Count - 1; i++)
+            {
+                builder.Append($" {Parameters[i]}");
+            }
+
+            builder.Append($" :{Parameters[^1]}");
+        }
+
+        return builder.ToString();
     }
 }
 
