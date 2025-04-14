@@ -5,6 +5,8 @@ public sealed class MsgJoin
     public required string Desc { get; init; }
     public required MsgJoinAtoms Atoms { get; init; }
     public required string[] Matches { get; init; }
+
+    public override string ToString() => Desc;
 }
 
 public sealed class MsgJoinAtoms

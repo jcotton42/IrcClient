@@ -98,9 +98,15 @@ public sealed class RawIrcMessage : ISpanParsable<RawIrcMessage>
                 return false;
             }
 
-            if (equalIndex < 0 || equalIndex == tag.Length - 1)
+            if (equalIndex < 0)
             {
                 tags[tag.ToString()] = null;
+                continue;
+            }
+
+            if (equalIndex == tag.Length - 1)
+            {
+                tags[tag[..equalIndex].ToString()] = null;
                 continue;
             }
 
