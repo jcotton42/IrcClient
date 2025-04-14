@@ -221,7 +221,7 @@ public sealed class RawIrcMessage : ISpanParsable<RawIrcMessage>
                 }
 
                 builder.Append(key);
-                if (value is not null)
+                if (value is not (null or ""))
                 {
                     builder.Append('=');
                     foreach (var c in value)
