@@ -10,7 +10,7 @@ public sealed class IrcMessageTests
     [Test]
     [MessageData<MsgJoin>("msg-join.yaml")]
     [DisplayName("$data")]
-    public void ToString(MsgJoin data)
+    public void MessageToString(MsgJoin data)
     {
         var message = new RawIrcMessage
         {
@@ -31,12 +31,23 @@ public sealed class IrcMessageTests
     [Test]
     [MessageData<MsgSplit>("msg-split.yaml")]
     [DisplayName("$data")]
-    public void Parsing(MsgSplit data)
+    public void MessageParsing(MsgSplit data)
     {
         var message = RawIrcMessage.Parse(data.Input);
         message.Tags.ShouldBe(data.Atoms.Tags?.AsReadOnly() ?? ReadOnlyDictionary<string, string?>.Empty);
         message.Source?.ToString().ShouldBe(data.Atoms.Source);
         message.Command.ShouldBe(data.Atoms.Verb);
         message.Parameters.ShouldBe(data.Atoms.Params ?? []);
+    }
+
+    [Test]
+    [MessageData<UserHostSplit>("userhost-split.yaml")]
+    [DisplayName("$data")]
+    public void SourceParsing(UserHostSplit data)
+    {
+        var source = IrcMessageSource.Parse(data.Source);
+        source.ServerOrNick.ShouldBe(data.Atoms.Nick);
+        source.User.ShouldBe(data.Atoms.User);
+        source.Host.ShouldBe(data.Atoms.Host);
     }
 }
