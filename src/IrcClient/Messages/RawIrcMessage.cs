@@ -1,6 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Collections.ObjectModel;
+using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
 
@@ -8,10 +7,10 @@ namespace IrcClient.Messages;
 
 public sealed class RawIrcMessage : ISpanParsable<RawIrcMessage>
 {
-    public required ReadOnlyDictionary<string, string?> Tags { get; init; }
+    public required ImmutableDictionary<string, string?> Tags { get; init; }
     public required IrcMessageSource? Source { get; init; }
     public required string Command { get; init; }
-    public required ReadOnlyCollection<string> Parameters { get; init; }
+    public required ImmutableArray<string> Parameters { get; init; }
 
     public static RawIrcMessage Parse(string s) => Parse(s.AsSpan(), null);
 
@@ -63,9 +62,9 @@ public sealed class RawIrcMessage : ISpanParsable<RawIrcMessage>
         return true;
     }
 
-    private static bool TryParseTags(ref ReadOnlySpan<char> s, out ReadOnlyDictionary<string, string?> result)
+    private static bool TryParseTags(ref ReadOnlySpan<char> s, out ImmutableDictionary<string, string?> result)
     {
-        result = ReadOnlyDictionary<string, string?>.Empty;
+        result = ImmutableDictionary<string, string?>.Empty;
         if (s[0] is not '@')
         {
             return true;
@@ -79,7 +78,7 @@ public sealed class RawIrcMessage : ISpanParsable<RawIrcMessage>
 
         var tagsSpan = s[1..spaceIndex];
         s = s[spaceIndex..].SkipAll(' ');
-        var tags = new Dictionary<string, string?>();
+        var tags = ImmutableDictionary.CreateBuilder<string, string?>();
 
         var builder = new StringBuilder();
         foreach (var range in tagsSpan.Split(';'))
@@ -113,7 +112,7 @@ public sealed class RawIrcMessage : ISpanParsable<RawIrcMessage>
             tags[tag[..equalIndex].ToString()] = ParseTagValue(tag[(equalIndex + 1)..], builder);
         }
 
-        result = new ReadOnlyDictionary<string, string?>(tags);
+        result = tags.ToImmutable();
         return true;
     }
 
@@ -185,15 +184,15 @@ public sealed class RawIrcMessage : ISpanParsable<RawIrcMessage>
         return true;
     }
 
-    private static bool TryParseParameters(ref ReadOnlySpan<char> s, out ReadOnlyCollection<string> result)
+    private static bool TryParseParameters(ref ReadOnlySpan<char> s, out ImmutableArray<string> result)
     {
         if (s.IsEmpty)
         {
-            result = ReadOnlyCollection<string>.Empty;
+            result = ImmutableArray<string>.Empty;
             return true;
         }
 
-        var parameters = new List<string>();
+        var parameters = ImmutableArray.CreateBuilder<string>();
         while (!s.IsEmpty)
         {
             if (s[0] is ':')
@@ -207,7 +206,7 @@ public sealed class RawIrcMessage : ISpanParsable<RawIrcMessage>
             parameters.Add(p.ToString());
         }
 
-        result = new ReadOnlyCollection<string>(parameters);
+        result = parameters.DrainToImmutable();
         return true;
     }
 
@@ -256,9 +255,9 @@ public sealed class RawIrcMessage : ISpanParsable<RawIrcMessage>
 
         builder.Append(Command);
 
-        if (Parameters is not [])
+        if (!Parameters.IsEmpty)
         {
-            for (var i = 0; i < Parameters.Count - 1; i++)
+            for (var i = 0; i < Parameters.Length - 1; i++)
             {
                 builder.Append($" {Parameters[i]}");
             }
