@@ -11,7 +11,7 @@ public sealed class MsgJoin
 
 public sealed class MsgJoinAtoms
 {
-    public Dictionary<string, string>? Tags { get; init; }
+    public Dictionary<string, string?>? Tags { get; init; }
     public string? Source { get; init; }
     public required string Verb { get; init; }
     public string[]? Params { get; init; }

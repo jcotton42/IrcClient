@@ -4,21 +4,30 @@ namespace IrcClient;
 
 public static class SpanExtensions
 {
-    public static ReadOnlySpan<char> SkipAll(this ReadOnlySpan<char> s, char c) => s.IndexOfAnyExcept(c) switch
-    {
-        < 0 => ReadOnlySpan<char>.Empty,
-        var i => s[i..],
-    };
-
-    public static DoubleReadOnlySpan<char> SplitOnceConsecutive(this ReadOnlySpan<char> s, char c)
-    {
-        var cIndex = s.IndexOf(c);
-        if (cIndex < 0)
+    public static ReadOnlySpan<T> SkipAll<T>(this ReadOnlySpan<T> s, T value)
+        where T : IEquatable<T>
+        => s.IndexOfAnyExcept(value) switch
         {
-            return new DoubleReadOnlySpan<char>(s, ReadOnlySpan<char>.Empty);
-        }
+            < 0 => ReadOnlySpan<T>.Empty,
+            var i => s[i..],
+        };
 
-        return new DoubleReadOnlySpan<char>(s[..cIndex], s[cIndex..].SkipAll(c));
+    public static DoubleReadOnlySpan<T> SplitOnce<T>(this ReadOnlySpan<T> s, T value)
+        where T : IEquatable<T>
+    {
+        var index = s.IndexOf(value);
+        return index < 0
+            ? new DoubleReadOnlySpan<T>(s, ReadOnlySpan<T>.Empty)
+            : new DoubleReadOnlySpan<T>(s[..index], s[(index + 1)..]);
+    }
+
+    public static DoubleReadOnlySpan<T> SplitOnceConsecutive<T>(this ReadOnlySpan<T> s, T value)
+        where T : IEquatable<T>
+    {
+        var index = s.IndexOf(value);
+        return index < 0
+            ? new DoubleReadOnlySpan<T>(s, ReadOnlySpan<T>.Empty)
+            : new DoubleReadOnlySpan<T>(s[..index], s[index..].SkipAll(value));
     }
 }
 
