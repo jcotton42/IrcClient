@@ -6,7 +6,7 @@ using System.Text.Unicode;
 
 namespace IrcClient.Messages;
 
-public sealed class RawIrcMessage : ISpanParsable<RawIrcMessage>, IUtf8SpanParsable<RawIrcMessage>
+public sealed class RawIrcMessage : ISpanParsable<RawIrcMessage>, IUtf8SpanParsable<RawIrcMessage>, ISpanFormattable, IUtf8SpanFormattable
 {
     public required ImmutableDictionary<string, string?> Tags { get; init; }
     public required IrcMessageSource? Source { get; init; }
@@ -54,63 +54,14 @@ public sealed class RawIrcMessage : ISpanParsable<RawIrcMessage>, IUtf8SpanParsa
         return result is not null;
     }
 
-    public override string ToString()
-    {
-        var builder = new StringBuilder();
+    public override string ToString() => ToString(null, null);
+    public string ToString(string? format, IFormatProvider? formatProvider) => $"{this}";
 
-        if (Tags.Count > 0)
-        {
-            builder.Append('@');
-            var first = true;
-            foreach (var (key, value) in Tags)
-            {
-                if (!first)
-                {
-                    builder.Append(';');
-                }
+    public bool TryFormat(Span<char> destination, out int charsWritten, ReadOnlySpan<char> format, IFormatProvider? provider) => 
+        IrcMessageFormatter.TryFormat(this, destination, out charsWritten);
 
-                builder.Append(key);
-                if (value is not (null or ""))
-                {
-                    builder.Append('=');
-                    foreach (var c in value)
-                    {
-                        builder.Append(c switch
-                        {
-                            ';' => @"\:",
-                            ' ' => @"\s",
-                            '\\' => @"\\",
-                            '\r' => @"\r",
-                            '\n' => @"\n",
-                            _ => [c],
-                        });
-                    }
-                }
-                first = false;
-            }
-
-            builder.Append(' ');
-        }
-
-        if (Source is not null)
-        {
-            builder.Append($":{Source} ");
-        }
-
-        builder.Append(Command);
-
-        if (!Parameters.IsEmpty)
-        {
-            for (var i = 0; i < Parameters.Length - 1; i++)
-            {
-                builder.Append($" {Parameters[i]}");
-            }
-
-            builder.Append($" :{Parameters[^1]}");
-        }
-
-        return builder.ToString();
-    }
+    public bool TryFormat(Span<byte> utf8Destination, out int bytesWritten, ReadOnlySpan<char> format, IFormatProvider? provider) =>
+        IrcMessageFormatter.TryFormat(this, utf8Destination, out bytesWritten);
 }
 
 public sealed class IrcMessageSource : ISpanParsable<IrcMessageSource>, IUtf8SpanParsable<IrcMessageSource>, ISpanFormattable, IUtf8SpanFormattable
@@ -159,63 +110,13 @@ public sealed class IrcMessageSource : ISpanParsable<IrcMessageSource>, IUtf8Spa
 
     public bool TryFormat(Span<char> destination, out int charsWritten, ReadOnlySpan<char> format, IFormatProvider? provider)
     {
-        if (!ServerOrNick.TryCopyTo(destination))
-        {
-            charsWritten = 0;
-            return false;
-        }
-
-        charsWritten = ServerOrNick.Length;
-        if (User is not null)
-        {
-            if (!destination[charsWritten..].TryWrite($"!{User}", out var written))
-            {
-                return false;
-            }
-
-            charsWritten += written;
-        }
-
-        if (Host is not null)
-        {
-            if (!destination[charsWritten..].TryWrite($"@{Host}", out var written))
-            {
-                return false;
-            }
-
-            charsWritten += written;
-        }
-
-        return true;
+        charsWritten = 0;
+        return IrcMessageFormatter.TryFormatSource(this, destination, ref charsWritten);
     }
 
     public bool TryFormat(Span<byte> utf8Destination, out int bytesWritten, ReadOnlySpan<char> format, IFormatProvider? provider)
     {
-        if (!Encoding.UTF8.TryGetBytes(ServerOrNick, utf8Destination, out bytesWritten))
-        {
-            return false;
-        }
-
-        if (User is not null)
-        {
-            if (!Utf8.TryWrite(utf8Destination, $"!{User}", out var written))
-            {
-                return false;
-            }
-
-            bytesWritten += written;
-        }
-
-        if (Host is not null)
-        {
-            if (!Utf8.TryWrite(utf8Destination, $"@{Host}", out var written))
-            {
-                return false;
-            }
-
-            bytesWritten += written;
-        }
-
-        return true;
+        bytesWritten = 0;
+        return IrcMessageFormatter.TryFormatSource(this, utf8Destination, ref bytesWritten);
     }
 }
