@@ -1,5 +1,4 @@
 <Solution>
-  <Project Path="src/IrcClient.Generators/IrcClient.Generators.csproj" />
   <Project Path="src/IrcClient/IrcClient.csproj" />
   <Project Path="test/IrcClient.Tests/IrcClient.Tests.csproj" />
 </Solution>
